@@ -1,4 +1,4 @@
-{{- define "otel.demo.deployment" }}
+{{- define "otel-demo.deployment" }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -19,32 +19,33 @@ spec:
         {{- toYaml .podAnnotations | nindent 8 }}
       {{- end }}
     spec:
-      {{- if or .defaultValues.image.pullSecrets .imageOverride.pullSecrets }}
+      {{- if or .defaultValues.image.pullSecrets ((.imageOverride).pullSecrets) }}
       imagePullSecrets:
-        {{- .imageOverride.pullSecrets | default .defaultValues.image.pullSecrets | toYaml | nindent 8}}
+        {{- ((.imageOverride).pullSecrets) | default .defaultValues.image.pullSecrets | toYaml | nindent 8}}
       {{- end }}
-      {{- with .serviceAccountName }}
-      serviceAccountName: {{ .serviceAccountName}}
-      {{- end }}
-      {{- if .schedulingRules }}
-      {{- if or .defaultValues.schedulingRules.nodeSelector .schedulingRules.nodeSelector}}
+      serviceAccountName: {{ include "otel-demo.serviceAccountName" .}}
+      {{- $schedulingRules := .schedulingRules | default dict }}
+      {{- if or .defaultValues.schedulingRules.nodeSelector $schedulingRules.nodeSelector}}
       nodeSelector:
-        {{- .schedulingRules.nodeSelector | default .defaultValues.schedulingRules.nodeSelector | toYaml | nindent 8 }}
+        {{- $schedulingRules.nodeSelector | default .defaultValues.schedulingRules.nodeSelector | toYaml | nindent 8 }}
       {{- end }}
-      {{- if or .defaultValues.schedulingRules.affinity .schedulingRules.affinity}}
+      {{- if or .defaultValues.schedulingRules.affinity $schedulingRules.affinity}}
       affinity:
-        {{ toYaml .schedulingRules.affinity | default .defaultValues.schedulingRules.affinity | toYaml | nindent 8 }}
+        {{- $schedulingRules.affinity | default .defaultValues.schedulingRules.affinity | toYaml | nindent 8 }}
       {{- end }}
-      {{- if or .defaultValues.schedulingRules.tolerations .schedulingRules.tolerations}}
+      {{- if or .defaultValues.schedulingRules.tolerations $schedulingRules.tolerations}}
       tolerations:
-        {{ toYaml .schedulingRules.tolerations | default .defaultValues.schedulingRules.tolerations | toYaml | nindent 8 }}
-      {{- end }}
+        {{- $schedulingRules.tolerations | default .defaultValues.schedulingRules.tolerations | toYaml | nindent 8 }}
       {{- end }}
       containers:
         - name: {{ .name }}
-          image: '{{ .imageOverride.repository | default .defaultValues.image.repository }}:{{ .imageOverride.tag | default (printf "v%s-%s" (default .Chart.AppVersion .defaultValues.image.tag) (replace "-" "" .name)) }}'
-          imagePullPolicy: {{ .imageOverride.pullPolicy | default .defaultValues.image.pullPolicy }}
-          {{- if or .ports .servicePort}}
+          image: '{{ ((.imageOverride).repository) | default .defaultValues.image.repository }}:{{ ((.imageOverride).tag) | default (printf "%s-%s" (default .Chart.AppVersion .defaultValues.image.tag) (replace "-" "" .name)) }}'
+          imagePullPolicy: {{ ((.imageOverride).pullPolicy) | default .defaultValues.image.pullPolicy }}
+          {{- if .command }}
+          command:
+            {{- .command | toYaml | nindent 10 -}}
+          {{- end }}
+          {{- if or .ports .service}}
           ports:
             {{- include "otel-demo.pod.ports" . | nindent 10 }}
           {{- end }}
@@ -52,9 +53,28 @@ spec:
             {{- include "otel-demo.pod.env" . | nindent 10 }}
           resources:
             {{- .resources | toYaml | nindent 12 }}
+          {{- if or .defaultValues.securityContext .securityContext }}
+          securityContext:
+            {{- .securityContext | default .defaultValues.securityContext | toYaml | nindent 12 }}
+          {{- end}}
+          {{- if .livenessProbe }}
+          livenessProbe:
+            {{- .livenessProbe | toYaml | nindent 12 }}
+          {{- end }}
+      {{- if .configuration }}
+          volumeMounts:
+          - name: config
+            mountPath: /etc/config
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "otel-demo.name" . }}-{{ .name }}-config
+      {{- end }}
 {{- end }}
-{{- define "otel.demo.service" }}
-{{- if or .ports .servicePort}}
+
+{{- define "otel-demo.service" }}
+{{- if or .ports .service}}
+{{- $service := .service | default dict }}
 ---
 apiVersion: v1
 kind: Service
@@ -62,8 +82,12 @@ metadata:
   name: {{ include "otel-demo.name" . }}-{{ .name }}
   labels:
     {{- include "otel-demo.labels" . | nindent 4 }}
+  {{- with $service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
-  type: {{.serviceType}}
+  type: {{ $service.type | default "ClusterIP" }}
   ports:
     {{- if .ports }}
     {{- range $port := .ports }}
@@ -73,12 +97,99 @@ spec:
     {{- end }}
     {{- end }}
 
-    {{- if .servicePort }}
-    - port: {{.servicePort}}
+    {{- if $service.port }}
+    - port: {{ $service.port}}
       name: service
-      targetPort: {{ .servicePort }}
+      targetPort: {{ $service.port }}
+      {{- if $service.nodePort }}
+      nodePort: {{ $service.nodePort }}
+      {{- end }}
     {{- end }}
   selector:
     {{- include "otel-demo.selectorLabels" . | nindent 4 }}
+{{- end}}
+{{- end}}
+{{- define "otel-demo.configmap" }}
+{{- if .configuration}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "otel-demo.name" . }}-{{ .name }}-config
+  labels:
+    service: {{ include "otel-demo.name" . }}-{{ .name }}
+    app: {{ include "otel-demo.name" . }}-{{ .name }}
+    component: {{ include "otel-demo.name" . }}-{{ .name }}-config
+data:
+  {{- .configuration | toYaml | nindent 2}}
+{{- end}}
+{{- end}}
+
+{{- define "otel-demo.ingress" }}
+{{- $hasIngress := false}}
+{{- if .ingress }}
+{{- if .ingress.enabled }}
+{{- $hasIngress = true }}
+{{- end }}
+{{- end }}
+{{- $hasServicePorts := false}}
+{{- if .service }}
+{{- if .service.port }}
+{{- $hasServicePorts = true }}
+{{- end }}
+{{- end }}
+{{- if and $hasIngress (or .ports $hasServicePorts) }}
+{{- $ingresses := list .ingress }}
+{{- if .ingress.additionalIngresses }}
+{{-   $ingresses := concat $ingresses .ingress.additionalIngresses -}}
+{{- end }}
+{{- range $ingresses }}
+---
+apiVersion: "networking.k8s.io/v1"
+kind: Ingress
+metadata:
+  {{- if .name }}
+  name: {{include "otel-demo.name" $ }}-{{ $.name }}-{{ .name }}
+  {{- else }}
+  name: {{include "otel-demo.name" $ }}-{{ $.name }}
+  {{- end }}
+  labels:
+    {{- include "otel-demo.labels" $ | nindent 4 }}
+  {{- if .annotations }}
+  annotations:
+    {{ toYaml .annotations | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .ingressClassName }}
+  ingressClassName: {{ .ingressClassName }}
+  {{- end -}}
+  {{- if .tls }}
+  tls:
+    {{- range .tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      {{- with .secretName }}
+      secretName: {{ . }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "otel-demo.name" $ }}-{{ $.name }}
+                port:
+                  number: {{ .port }}
+          {{- end }}
+    {{- end }}
+{{- end}}
 {{- end}}
 {{- end}}

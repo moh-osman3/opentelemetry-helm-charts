@@ -86,6 +86,7 @@ Build config file for deployment OpenTelemetry Collector
 {{- define "opentelemetry-collector.hostMetricsConfig" -}}
 receivers:
   hostmetrics:
+    root_path: /hostfs
     collection_interval: 10s
     scrapers:
         cpu:
@@ -93,6 +94,42 @@ receivers:
         memory:
         disk:
         filesystem:
+          exclude_mount_points:
+            mount_points:
+              - /dev/*
+              - /proc/*
+              - /sys/*
+              - /run/k3s/containerd/*
+              - /var/lib/docker/*
+              - /var/lib/kubelet/*
+              - /snap/*
+            match_type: regexp
+          exclude_fs_types:
+            fs_types:
+              - autofs
+              - binfmt_misc
+              - bpf
+              - cgroup2
+              - configfs
+              - debugfs
+              - devpts
+              - devtmpfs
+              - fusectl
+              - hugetlbfs
+              - iso9660
+              - mqueue
+              - nsfs
+              - overlay
+              - proc
+              - procfs
+              - pstore
+              - rpc_pipefs
+              - securityfs
+              - selinuxfs
+              - squashfs
+              - sysfs
+              - tracefs
+            match_type: strict
         network:
 {{- end }}
 
@@ -144,7 +181,7 @@ receivers:
     exclude: []
     {{- else }}
     # Exclude collector container's logs. The file format is /var/log/pods/<namespace_name>_<pod_name>_<pod_uid>/<container_name>/<run_id>.log
-    exclude: [ /var/log/pods/{{ .Release.Namespace }}_{{ include "opentelemetry-collector.fullname" . }}*_*/{{ .Chart.Name }}/*.log ]
+    exclude: [ /var/log/pods/{{ .Release.Namespace }}_{{ include "opentelemetry-collector.lowercase_chartname" . }}*_*/{{ include "opentelemetry-collector.name" . }}/*.log ]
     {{- end }}
     start_at: beginning
     {{- if .Values.presets.logsCollection.storeCheckpoints}}
@@ -263,6 +300,12 @@ processors:
   port: {{ $port.servicePort }}
   targetPort: {{ $port.containerPort }}
   protocol: {{ $port.protocol }}
+  {{- if $port.appProtocol }}
+  appProtocol: {{ $port.appProtocol }}
+  {{- end }}
+{{- if $port.nodePort }}
+  nodePort: {{ $port.nodePort }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

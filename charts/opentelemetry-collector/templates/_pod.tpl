@@ -7,7 +7,7 @@ serviceAccountName: {{ include "opentelemetry-collector.serviceAccountName" . }}
 securityContext:
   {{- toYaml .Values.podSecurityContext | nindent 2 }}
 containers:
-  - name: {{ .Chart.Name }}
+  - name: {{ include "opentelemetry-collector.lowercase_chartname" . }}
     command:
       - /{{ .Values.command.name }}
       {{- if .Values.configMap.create }}
@@ -23,7 +23,11 @@ containers:
       {{- else -}}
       {{- toYaml .Values.securityContext | nindent 6 }}
       {{- end }}
+    {{- if .Values.image.digest }}
+    image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+    {{- else }}
     image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+    {{- end }}
     imagePullPolicy: {{ .Values.image.pullPolicy }}
     ports:
       {{- range $key, $port := .Values.ports }}
@@ -42,20 +46,6 @@ containers:
           fieldRef:
             apiVersion: v1
             fieldPath: status.podIP
-      {{- if .Values.presets.hostMetrics.enabled }}
-      - name: HOST_PROC
-        value: /hostfs/proc
-      - name: HOST_SYS
-        value: /hostfs/sys
-      - name: HOST_ETC
-        value: /hostfs/etc
-      - name: HOST_VAR
-        value: /hostfs/var
-      - name: HOST_RUN
-        value: /hostfs/run
-      - name: HOST_DEV
-        value: /hostfs/dev
-      {{- end }}
       {{- if .Values.presets.kubeletMetrics.enabled }}
       - name: K8S_NODE_NAME
         valueFrom:
@@ -82,7 +72,7 @@ containers:
     volumeMounts:
       {{- if .Values.configMap.create }}
       - mountPath: /conf
-        name: {{ .Chart.Name }}-configmap
+        name: {{ include "opentelemetry-collector.lowercase_chartname" . }}-configmap
       {{- end }}
       {{- range .Values.extraConfigMapMounts }}
       - name: {{ .name }}
@@ -134,14 +124,14 @@ containers:
 {{- end }}
 {{- if .Values.initContainers }}
 initContainers:
-  {{- toYaml .Values.initContainers | nindent 2 }}
+  {{- tpl (toYaml .Values.initContainers) . | nindent 2 }}
 {{- end }}
 {{- if .Values.priorityClassName }}
 priorityClassName: {{ .Values.priorityClassName | quote }}
 {{- end }}
 volumes:
   {{- if .Values.configMap.create }}
-  - name: {{ .Chart.Name }}-configmap
+  - name: {{ include "opentelemetry-collector.lowercase_chartname" . }}-configmap
     configMap:
       name: {{ include "opentelemetry-collector.fullname" . }}{{ .configmapSuffix }}
       items:
@@ -195,6 +185,10 @@ affinity:
 {{- end }}
 {{- with .Values.tolerations }}
 tolerations:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .Values.topologySpreadConstraints }}
+topologySpreadConstraints:
   {{- toYaml . | nindent 2 }}
 {{- end }}
 {{- end }}

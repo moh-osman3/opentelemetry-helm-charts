@@ -5,10 +5,10 @@ kind: DaemonSet
 metadata:
   name: example-opentelemetry-collector-agent
   labels:
-    helm.sh/chart: opentelemetry-collector-0.40.7
+    helm.sh/chart: opentelemetry-collector-0.50.1
     app.kubernetes.io/name: opentelemetry-collector
     app.kubernetes.io/instance: example
-    app.kubernetes.io/version: "0.66.0"
+    app.kubernetes.io/version: "0.73.0"
     app.kubernetes.io/managed-by: Helm
 spec:
   selector:
@@ -21,7 +21,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: 182c88c7d14149bd0d5b3736a4048eb51521d87f70f62cea7c7dc5e14ea052d0
+        checksum/config: c34e37e3a3cb4b9408cefb0df8bdcd9879080605659a924bd28c2f9a6343f0a6
         
       labels:
         app.kubernetes.io/name: opentelemetry-collector
@@ -40,7 +40,7 @@ spec:
             - --config=/conf/relay.yaml
           securityContext:
             {}
-          image: "otel/opentelemetry-collector-contrib:0.66.0"
+          image: "otel/opentelemetry-collector-contrib:0.73.0"
           imagePullPolicy: IfNotPresent
           ports:
             - name: jaeger-compact
@@ -73,18 +73,6 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: status.podIP
-            - name: HOST_PROC
-              value: /hostfs/proc
-            - name: HOST_SYS
-              value: /hostfs/sys
-            - name: HOST_ETC
-              value: /hostfs/etc
-            - name: HOST_VAR
-              value: /hostfs/var
-            - name: HOST_RUN
-              value: /hostfs/run
-            - name: HOST_DEV
-              value: /hostfs/dev
           livenessProbe:
             httpGet:
               path: /

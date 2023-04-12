@@ -5,6 +5,10 @@ Expand the name of the chart.
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{- define "opentelemetry-collector.lowercase_chartname" -}}
+{{- default .Chart.Name | lower }}
+{{- end }}
+
 {{/*
 Get component name
 */}}
@@ -81,51 +85,15 @@ Create the name of the service account to use
 Create the name of the clusterRole to use
 */}}
 {{- define "opentelemetry-collector.clusterRoleName" -}}
-{{- if .Values.clusterRole.create }}
 {{- default (include "opentelemetry-collector.fullname" .) .Values.clusterRole.name }}
-{{- else }}
-{{- default "default" .Values.clusterRole.name }}
-{{- end }}
 {{- end }}
 
 {{/*
 Create the name of the clusterRoleBinding to use
 */}}
 {{- define "opentelemetry-collector.clusterRoleBindingName" -}}
-{{- if .Values.clusterRole.create }}
 {{- default (include "opentelemetry-collector.fullname" .) .Values.clusterRole.clusterRoleBinding.name }}
-{{- else }}
-{{- default "default" .Values.clusterRole.clusterRoleBinding.name }}
 {{- end }}
-{{- end }}
-
-{{/*
-Return the appropriate apiVersion for ingress.
-*/}}
-{{- define "ingress.apiVersion" -}}
-  {{- if and (.Capabilities.APIVersions.Has "networking.k8s.io/v1") (semverCompare ">= 1.19-0" .Capabilities.KubeVersion.Version) -}}
-      {{- print "networking.k8s.io/v1" -}}
-  {{- else if .Capabilities.APIVersions.Has "networking.k8s.io/v1beta1" -}}
-    {{- print "networking.k8s.io/v1beta1" -}}
-  {{- else -}}
-    {{- print "extensions/v1beta1" -}}
-  {{- end -}}
-{{- end -}}
-
-{{/*
-Return if ingress supports pathType.
-*/}}
-{{- define "ingress.supportsPathType" -}}
-  {{- or (eq (include "ingress.isStable" .) "true") (and (eq (include "ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18-0" .Capabilities.KubeVersion.Version)) -}}
-{{- end -}}
-
-{{/*
-Return if ingress is stable.
-*/}}
-{{- define "ingress.isStable" -}}
-  {{- eq (include "ingress.apiVersion" .) "networking.k8s.io/v1" -}}
-{{- end -}}
-
 
 {{- define "opentelemetry-collector.podAnnotations" -}}
 {{- if .Values.podAnnotations }}
